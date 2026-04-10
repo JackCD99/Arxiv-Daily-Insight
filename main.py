@@ -12,6 +12,70 @@ from time import mktime
 import os
 import yaml  # Used for parsing the external config file
 
+
+
+
+# =========================================================================================
+#      █████╗ ██████╗ ██╗  ██╗██╗██╗   ██╗     ██████╗ ██████╗ ███████╗████████╗███████╗
+#     ██╔══██╗██╔══██╗╚██╗██╔╝██║██║   ██║     ██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██╔════╝
+#     ███████║██████╔╝ ╚███╔╝ ██║██║   ██║     ██████╔╝██║  ██║█████╗     ██║   █████╗  
+#     ██╔══██║██╔══██╗ ██╔██╗ ██║╚██╗ ██╔╝     ██╔═══╝ ██║  ██║██╔══╝     ██║   ██╔══╝  
+#     ██║  ██║██║  ██║██╔╝ ██╗██║ ╚████╔╝      ██║     ██████╔╝███████╗   ██║   ███████╗
+#     ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚════╝      ╚═╝     ╚═════╝ ╚══════╝   ╚═╝   ╚══════╝
+# =========================================================================================
+#
+#                    [ THE MULTI-STAGE INTELLIGENT FILTERING FUNNEL ]
+#
+#   [ arXiv API ] 
+#         |  Fetch last 24h window
+#         V  (~500+ Papers)
+#   +-----------------------------------------------------------------------------------+
+#   | STAGE 1: LOCAL HEURISTIC HARD FILTER (fetch_and_local_filter_arxiv)               |
+#   |   1. Domain Check  : Must contain 'cs.*' tag.                                     |
+#   |   2. Keyword Match : Regex match `must_have_keywords` (e.g., diffusion).          |
+#   |   3. Truncation    : Cap at `hard_limit` (e.g., 100) to prevent API bloat.        |
+#   +-----+-----------------------------------------------------------------------------+
+#         |
+#         V  (Filtered down to ~100 Candidates)
+#   +-----------------------------------------------------------------------------------+
+#   | STAGE 2: SEMANTIC TITLE PRE-FILTER (pre_filter_by_titles)                         |
+#   |   * LLM Agent: deepseek-chat (High-speed, cost-effective)                         |
+#   |   1. Boundary      : Exclude non-medical papers matching NEGATIVE_PROMPT.         |
+#   |   2. Alignment     : Prioritize titles aligning with CURRENT_FOCUS.               |
+#   |   3. Selection     : Returns indices of Top `pre_filter_k` (e.g., 25).            |
+#   +-----+-----------------------------------------------------------------------------+
+#         |
+#         V  (High-potential Top 25 Titles)
+#   +-----------------------------------------------------------------------------------+
+#   | STAGE 3: DEEP REASONING & SCORING (evaluate_and_filter_papers)                    |
+#   |   * LLM Agent: deepseek-reasoner (Deep logic & Chain-of-Thought)                  |
+#   |   1. Read Abstract : Full semantic analysis with Anti-Hallucination rules.        |
+#   |   2. Matrix Scoring: Domain (D) + Method (M) + Alignment (A) + Venue Bonus.       |
+#   |   3. Extraction    : JSON extract Relevance (0-5) & Novelty Tie-Breaker (1-10).   |
+#   |   4. Pruning       : Discard papers with Relevance == 0.                          |
+#   +-----+-----------------------------------------------------------------------------+
+#         |
+#         V  (Scored & Parsed JSON Objects)
+#   +-----------------------------------------------------------------------------------+
+#   | STAGE 4: MULTI-LEVEL TUPLE SORTING (run_job)                                      |
+#   |   1. Primary Sort  : Relevance Score (DESC).                                      |
+#   |   2. Tie-Breaker   : Novelty Score (DESC).                                        |
+#   |   3. Truncation    : Isolate final `top_k_papers` (e.g., 5).                      |
+#   +-----+-----------------------------------------------------------------------------+
+#         |
+#         V  (Final Top 5 Papers)
+#   +-----------------------------------------------------------------------------------+
+#   | STAGE 5: SYNTHESIS & MOBILE DELIVERY (beautify_to_markdown & send_email)          |
+#   |   * LLM Agent: deepseek-chat (Styling & Translation)                              |
+#   |   1. Synthesis     : Generate Academic Chinese Markdown (Background/Method/Impact)|
+#   |   2. Styling       : Map scores to Emojis (🌟), inject mobile-friendly CSS/HTML.  |
+#   |   3. Delivery      : PushPlus API -> WeChat Notification.                         |
+#   +-----------------------------------------------------------------------------------+
+# =========================================================================================
+
+
+
+
 # =====================================================================
 # 1. Configuration Loading & Environment Setup
 # =====================================================================
@@ -48,12 +112,11 @@ def call_deepseek(messages, model_name, temperature, expect_json=False):
     Returns:
         str: The generated content from the LLM.
     """
-    # Fetch the dynamically configured base URL from config.yaml
     url = config['llm']['base_url']
     
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {config['auth']['llm_api_key']}" # Updated to generic key name
+        "Authorization": f"Bearer {config['auth']['llm_api_key']}" 
     }
     
     payload = {
@@ -62,12 +125,11 @@ def call_deepseek(messages, model_name, temperature, expect_json=False):
         "temperature": temperature,
     }
 
-    # Note: Many reasoning models (like deepseek-reasoner or o1) do not support the forced JSON format
     if expect_json and "reasoner" not in model_name.lower():
         payload["response_format"] = {"type": "json_object"}
 
     response = requests.post(url, headers=headers, json=payload)
-    response.raise_for_status() # Raise an exception for bad HTTP status codes
+    response.raise_for_status() 
     return response.json()['choices'][0]['message']['content']
 
 
@@ -79,6 +141,12 @@ def extract_json_from_text(text):
     match = re.search(r'\{[\s\S]*\}', text)
     if match:
         return match.group(0)
+    
+    # Handle array cases like [0, 1, 2] for the pre_filter prompt
+    match_array = re.search(r'\[[\s\S]*\]', text)
+    if match_array:
+        return match_array.group(0)
+        
     return text
 
 
@@ -97,8 +165,8 @@ def fetch_and_local_filter_arxiv():
     latest_paper_time = None
     cutoff_time = None
     
-    raw_window_papers = []  # To store ALL papers within the time window
-    all_filtered_papers = [] # To store papers after CS and keyword filtering
+    raw_window_papers = []  
+    all_filtered_papers = [] 
 
     print("📡 Starting expansive arXiv data fetch (Processing entire 24h window first)...")
 
@@ -122,10 +190,8 @@ def fetch_and_local_filter_arxiv():
         if not feed or not feed.entries:
             break
 
-        # Set the 24h anchor based on the first paper of the first page
         if latest_paper_time is None:
-            latest_paper_time = datetime.datetime.fromtimestamp(mktime(feed.entries[0].published_parsed),
-                                                                datetime.timezone.utc)
+            latest_paper_time = datetime.datetime.fromtimestamp(mktime(feed.entries[0].published_parsed), datetime.timezone.utc)
             cutoff_time = latest_paper_time - datetime.timedelta(hours=24)
             print(f"📅 Window Anchor: {latest_paper_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
             print(f"⏳ Cutoff Time: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
@@ -171,6 +237,55 @@ def fetch_and_local_filter_arxiv():
     return all_filtered_papers
 
 
+def pre_filter_by_titles(papers):
+    """
+    Step 1.5: Perform a cost-effective pre-filter based solely on titles.
+    Uses the reasoning model to pick the most promising candidates.
+    """
+    if not papers:
+        return []
+
+    pre_filter_k = config['filter'].get('pre_filter_k', 20)
+    if len(papers) <= pre_filter_k:
+        return papers
+
+    model = config['llm']['model_reasoning'] 
+    print(f"\n🧠 Pre-filtering {len(papers)} titles to pick top {pre_filter_k} candidates...")
+
+    title_list_str = ""
+    for idx, p in enumerate(papers):
+        title_list_str += f"{idx}. {p.title.replace(chr(10), ' ')}\n"
+
+    # Extract formalized variables
+    core_list = ", ".join(config['criteria']['research_keywords']['core_domains'])
+    method_list = ", ".join(config['criteria']['research_keywords']['methodologies'])
+    neg_list = ", ".join(config['criteria']['negative_prompt'])
+    focus = config['criteria'].get('current_focus', "None") # <--- Focus
+
+    prompt = config['prompts']['pre_filter_prompt']
+    prompt = prompt.replace("{RESEARCH_KEYWORDS_CORE}", core_list)
+    prompt = prompt.replace("{RESEARCH_KEYWORDS_METHOD}", method_list)
+    prompt = prompt.replace("{NEGATIVE_PROMPT}", neg_list)
+    prompt = prompt.replace("{CURRENT_FOCUS}", focus)
+    prompt = prompt.replace("{PRE_FILTER_K}", str(pre_filter_k))
+    prompt = prompt.replace("{TITLE_LIST}", title_list_str)
+
+    try:
+        res = call_deepseek([{"role": "user", "content": prompt}], model, 0.1, True)
+        clean_res = extract_json_from_text(res)
+        selected_indices = json.loads(clean_res)
+        
+        if isinstance(selected_indices, list):
+            selected_papers = [papers[i] for i in selected_indices if isinstance(i, int) and 0 <= i < len(papers)]
+            print(f"✅ Pre-filter complete: Kept {len(selected_papers)} candidates.")
+            return selected_papers
+    except Exception as e:
+        print(f"⚠️ Pre-filter failed due to error: {e}. Proceeding with original list (truncated).")
+        return papers[:pre_filter_k]
+
+    return papers[:pre_filter_k]
+
+
 # =====================================================================
 # 3. Core Processing Pipeline
 # =====================================================================
@@ -178,60 +293,72 @@ def fetch_and_local_filter_arxiv():
 def evaluate_and_filter_papers(papers):
     """
     Evaluates and filters arXiv papers using a reasoning LLM.
-    
-    This function injects research-specific keywords and the user's current research 
-    focus into a structured prompt, then calls the LLM to score each paper's relevance.
-    
-    Args:
-        papers (list): A list of feedparser entry objects from arXiv.
-        
-    Returns:
-        list: A list of dictionaries containing filtered papers with high relevance scores.
     """
     model = config['llm']['model_reasoning']
     print(f"\n🧠 Calling advanced reasoning model ({model}) to strictly screen relevant literature...")
     filtered_results = []
 
-    # Retrieve current research focus from config; fallback to a general description if empty
-    current_focus = config['criteria'].get('current_focus', "General Medical Image Analysis & Generative AI")
-    if not current_focus:
-        current_focus = "General Medical Image Analysis & Generative AI"
+    # Prepare formalized lists
+    core_list = ", ".join(config['criteria']['research_keywords']['core_domains'])
+    method_list = ", ".join(config['criteria']['research_keywords']['methodologies'])
+    neg_list = ", ".join(config['criteria']['negative_prompt'])
+    focus = config['criteria'].get('current_focus', "None")
+    
+    # Extract the whitelist of top-tier conferences/journals for the venue bonus calculation
+    top_venues_list = ", ".join(config['criteria'].get('top_venues', []))
 
     for idx, p in enumerate(papers, 1):
-        # Truncate title for clean console logging
-        display_title = p.title.replace('\n', ' ')[:40]
-        print(f" 🔍 Evaluating [{idx}/{len(papers)}]: {display_title}...")
+        clean_title = p.title.replace('\n', ' ')
+        print(f"\n 🔍 Evaluating [{idx}/{len(papers)}]:\n    Title: {clean_title}")
         
         authors = ", ".join([author.name for author in p.authors])
+        
+        # arXiv typically stores metadata (e.g., conference acceptance status) in the 'arxiv_comment' attribute
         arxiv_comment = p.get('arxiv_comment', 'Not specified')
         
         # Inject dynamic variables into the evaluation prompt template
         prompt_template = config['prompts']['evaluate_prompt']
         prompt = (
-            prompt_template.replace("{RESEARCH_KEYWORDS}", config['criteria']['research_keywords'])
-            .replace("{NEGATIVE_PROMPT}", config['criteria']['negative_prompt'])
-            .replace("{CURRENT_FOCUS}", current_focus)
+            prompt_template.replace("{RESEARCH_KEYWORDS_CORE}", core_list)
+            .replace("{RESEARCH_KEYWORDS_METHOD}", method_list)
+            .replace("{NEGATIVE_PROMPT}", neg_list)
+            .replace("{CURRENT_FOCUS}", focus)
+            .replace("{TOP_VENUES}", top_venues_list) # Inject the top venue whitelist
             .replace("{TITLE}", p.title)
             .replace("{SUMMARY}", p.summary)
+            .replace("{REMARKS}", arxiv_comment)      # Inject arXiv remarks to evaluate the +1 venue bonus
         )
 
         try:
-            # Call LLM with strict JSON format enforcement
-            response = call_deepseek(
-                messages=[{"role": "user", "content": prompt}], 
-                model_name=model, 
-                temperature=config['llm']['temp_reasoning'], 
-                expect_json=True
-            )
+            response = call_deepseek([{"role": "user", "content": prompt}], model, config['llm']['temp_reasoning'], True)
             
-            # Robust JSON extraction from LLM response
             clean_json_str = extract_json_from_text(response)
             data = json.loads(clean_json_str)
 
-            # Filtering logic: only keep papers with relevance > 0
-            if data.get("relevance", 0) > 0:
-                # Enrich the data object with metadata for the subsequent beautification step
+            # Safely extract the primary relevance score.
+            # This handles edge cases where the LLM might return a single-item list (e.g., [5]) instead of an integer.
+            raw_score = data.get("relevance", 0)
+            if isinstance(raw_score, list) and len(raw_score) > 0:
+                final_score = raw_score[0]
+            else:
+                final_score = int(raw_score)
+
+            # Safely extract the novelty tie-breaker score.
+            # This score acts as a secondary metric to resolve ranking collisions among papers with identical relevance scores.
+            raw_novelty = data.get("novelty", 0)
+            if isinstance(raw_novelty, list) and len(raw_novelty) > 0:
+                novelty_score = raw_novelty[0]
+            else:
+                novelty_score = int(raw_novelty)
+            
+            # Extract the Chain-of-Thought rationale for debugging and transparency.
+            rationale = data.get("thought_trace", "No rationale provided.")
+
+            if final_score > 0:
+                # Enrich the parsed JSON data with original metadata and the calculated scores
                 data.update({
+                    "relevance": final_score, 
+                    "novelty": novelty_score, # Store the tie-breaker score for Stage 4 sorting
                     "arxiv_url": p.link,
                     "title": p.title,
                     "authors_and_affiliations": authors,
@@ -239,12 +366,16 @@ def evaluate_and_filter_papers(papers):
                 })
                 
                 filtered_results.append(data)
-                print(f"    ✅ Kept: [Score: {data['relevance']}]")
+                
+                # Log the retention event, displaying both the primary score and the tie-breaker
+                print(f"    ✅ Kept   [Score: {final_score} | Novelty: {novelty_score}]")
+                print(f"    💡 Reason: {rationale}")
             else:
-                print(f"    ❌ Discarded: Low relevance or Negative Prompt triggered")
+                print(f"    ❌ Discarded [Score: {final_score}]")
+                print(f"    💡 Reason: {rationale}")
 
         except Exception as e:
-            print(f"    ⚠️ Evaluation exception for paper '{display_title}': {e}")
+            print(f"    ⚠️ Evaluation exception for paper: {e}")
 
     return filtered_results
 
@@ -258,7 +389,7 @@ def beautify_to_markdown(top_papers):
         return ""
 
     model = config['llm']['model_reasoning']
-    print(f"\n🧠 Calling advanced reasoning model ({model}) to generate the final Markdown layout for Top {len(top_papers)}...")
+    print(f"\n🎨 Calling chat model ({model}) to generate the final Markdown layout for Top {len(top_papers)}...")
     
     raw_content = json.dumps(top_papers, ensure_ascii=False, indent=2)
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -268,8 +399,7 @@ def beautify_to_markdown(top_papers):
     prompt = prompt.replace("{TOP_K}", str(len(top_papers)))
     prompt = prompt.replace("{RAW_CONTENT}", raw_content)
 
-    # Do not force JSON here, expect pure Markdown string
-    return call_deepseek([{"role": "user", "content": prompt}], model, config['llm']['temp_reasoning'], False)
+    return call_deepseek([{"role": "user", "content": prompt}], model, config['llm']['temp_chat'], False)
 
 
 def send_beautiful_email(md_content):
@@ -279,10 +409,8 @@ def send_beautiful_email(md_content):
     """
     print("📲 Generating HTML and attempting to push to WeChat...")
     
-    # Convert Markdown to basic HTML
     html_body = markdown.markdown(md_content, extensions=['extra', 'nl2br'])
     
-    # Split the HTML to wrap each paper inside a styled CSS card
     parts = html_body.split('<h3>')
     processed_html = parts[0] 
     
@@ -291,7 +419,6 @@ def send_beautiful_email(md_content):
 
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 
-    # Injecting custom CSS designed for optimal mobile viewing on WeChat
     final_html = f"""
     <html>
         <head>
@@ -335,61 +462,10 @@ def send_beautiful_email(md_content):
         print(f"❌ Failed to push notification: {e}")
         raise e
 
-def pre_filter_by_titles(papers):
-    """
-    Step 1.5: Perform a cost-effective pre-filter based solely on titles.
-    Uses the reasoning model to pick the most promising candidates.
-    """
-    if not papers:
-        return []
 
-    pre_filter_k = config['filter'].get('pre_filter_k', 20)
-    # If the number of papers is already small, skip pre-filtering
-    if len(papers) <= pre_filter_k:
-        return papers
-
-    model = config['llm']['model_chat'] # Use chat model for speed and cost
-    print(f"\n🧠 Pre-filtering {len(papers)} titles to pick top {pre_filter_k} candidates...")
-
-    # Construct the title list for the prompt
-    title_list_str = ""
-    for idx, p in enumerate(papers):
-        title_list_str += f"{idx}. {p.title}\n"
-
-    prompt = config['prompts']['pre_filter_prompt']
-    prompt = prompt.replace("{RESEARCH_KEYWORDS}", config['criteria']['research_keywords'])
-    prompt = prompt.replace("{PRE_FILTER_K}", str(pre_filter_k))
-    prompt = prompt.replace("{TITLE_LIST}", title_list_str)
-
-    try:
-        res = call_deepseek([{"role": "user", "content": prompt}], model, 0.1, True)
-        selected_indices = json.loads(extract_json_from_text(res))
-        
-        # Ensure it's a list of integers
-        if isinstance(selected_indices, list):
-            selected_papers = [papers[i] for i in selected_indices if i < len(papers)]
-            print(f"✅ Pre-filter complete: Kept {len(selected_papers)} candidates.")
-            return selected_papers
-    except Exception as e:
-        print(f"⚠️ Pre-filter failed due to error: {e}. Proceeding with original list (truncated).")
-        return papers[:pre_filter_k]
-
-    return papers[:pre_filter_k]
-    
 # =====================================================================
 # [4. Main Execution Controller - The Funnel Pipeline]
 # =====================================================================
-# Rationale:
-# This pipeline implements a "Multi-Stage Intelligent Funnel" to process 
-# massive academic data under a limited time window and API budget.
-#
-# Funnel Architecture:
-# Level 1 (Hard Filter): Local Python filtering (CS domain + Keywords).
-# Level 2 (Pre-Filter): Fast LLM screening based on titles only.
-# Level 3 (Deep Analysis): Reasoning LLM scoring based on full abstracts.
-# Final (Synthesis): LLM-driven Markdown synthesis and mobile delivery.
-# =====================================================================
-
 def run_job():
     """
     Main execution controller implementing a multi-stage filtering funnel.
@@ -401,23 +477,15 @@ def run_job():
      -2 : Fatal Error - Pipeline crash or LLM parsing failures.
     """
     try:
-        # --- Stage 1: Expansive Fetch & Local Hard Filter ---
         raw_papers = fetch_and_local_filter_arxiv()
 
-        # Check for abnormal 0-fetch results (likely API/Proxy blocks)
         if not raw_papers:
             print("⚠️ WARNING: Fetched 0 papers. This is abnormal for broad queries; indicating an API or network issue.")
             return -1
 
-        # --- Stage 2: Title-based Pre-filter (Level 2 Funnel) ---
-        # Reduces the number of papers before the expensive reasoning stage
         pre_filtered_pool = pre_filter_by_titles(raw_papers)
-
-        # --- Stage 3: Deep Abstract Analysis & Scoring (Level 3 Funnel) ---
-        # The reasoning model now only processes the most promising candidates
         scored_papers = evaluate_and_filter_papers(pre_filtered_pool)
 
-        # Check if any papers survived the deep relevance scoring
         if not scored_papers:
             print("ℹ️ No relevant papers survived the deep LLM evaluation. No push notification needed.")
             return 3
@@ -426,11 +494,16 @@ def run_job():
         top_k = config['filter']['top_k_papers']
         print(f"\n📊 Stage 4: Sorting by relevance and extracting Top {top_k}...")
         
-        # Sort papers based on the 'relevance' score provided by the reasoning LLM
-        scored_papers.sort(key=lambda x: x.get('relevance', 0), reverse=True)
+        # Core Mechanism: Multi-level Tuple Sorting
+        # Priority 1: Sort by primary 'relevance' score descending (e.g., 5 > 4).
+        # Priority 2: In case of a tie, resolve using the 'novelty' score descending 
+        #             (e.g., if both have a relevance of 4, a novelty of 9 beats a novelty of 6).
+        scored_papers.sort(key=lambda x: (x.get('relevance', 0), x.get('novelty', 0)), reverse=True)
+        
+        # Truncate the list to the configured Top-K limit
         top_papers = scored_papers[:top_k]
 
-        # Generate the Markdown brief and push via WeChat (PushPlus)
+        # Synthesize the Markdown report and push it to the WeChat client
         md_content = beautify_to_markdown(top_papers)
         send_beautiful_email(md_content)
 
@@ -438,15 +511,13 @@ def run_job():
         return 1
 
     except urllib.error.URLError as e:
-        # Specific handling for network-level issues to trigger a retry via caller.py
         print(f"❌ Network Error: arXiv fetch encountered a severe exception: {e}")
         return -1 
         
     except Exception as e:
-        # General exception handling for internal logic/parsing crashes
         print(f"❌ Critical Error: Main pipeline encountered an unexpected exception: {e}")
         import traceback
-        traceback.print_exc() # Print full stack trace for easier debugging on GitHub/Linux servers
+        traceback.print_exc() 
         return -2
 
 
