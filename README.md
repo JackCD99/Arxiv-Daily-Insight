@@ -104,5 +104,5 @@ The report delivered to your WeChat includes:
 Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
-**Developed by Hongyu Zhang** *Empowering researchers with AI-driven knowledge discovery.*
+**Developed by Hongyu** *Empowering researchers with AI-driven knowledge discovery.*
 📧 Contact: [zhanghongyu22@mails.jlu.edu.cn](mailto:zhanghongyu22@mails.jlu.edu.cn)
