@@ -40,11 +40,8 @@ git clone [https://github.com/YourUsername/Arxiv-Daily-Insight.git](https://gith
 cd Arxiv-Daily-Insight
 pip install -r requirements.txt
 
-## 🖥️ Server Deployment (Automation)
-
+### 2. Server Deployment (Automation)
 To ensure you receive paper updates every day without maintaining an active SSH session, it is recommended to deploy the pipeline as a **Cron Job** on your Linux server.
-
-### 1. Identify Your Python Path
 Since most researchers use Conda or virtual environments, you must use the **absolute path** of your Python interpreter. Find it by running:
 ```bash
 # Activate your environment first
