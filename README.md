@@ -18,20 +18,11 @@ Stop drowning in hundreds of new papers every day. Let AI find the "Core Reading
 
 ---
 
-## 🌟 Key Features
-
--   **Multi-Stage Filtering Funnel**: 
-    -   **L1 (Hard Filter)**: Keyword-based filtering across the entire 24h arXiv window.
-    -   **L2 (Pre-Filter)**: Fast LLM screening based on titles to save tokens.
-    -   **L3 (Deep Analysis)**: Advanced Reasoning LLM scoring based on full abstracts.
--   **Intelligent Relevance Scoring**: Prioritizes papers that align perfectly with your *current research focus*.
--   **Academic Visuals**: Delivers beautifully formatted Markdown reports with color-coded analysis (Background, Pain Points, Method, Conclusion).
--   **Instant Delivery**: Seamless integration with **PushPlus** for WeChat notifications.
--   **Robust Error Handling**: Built-in smart retry mechanism for server environments.
-
----
-
 ## 🏗️ Technical Architecture
+
+<p align="center">
+  <img src="./Overview.png" alt="Arxiv-Daily-Insight Architecture Overview" width="100%">
+</p>
 
 1.  **Crawler**: Exhausts the 24-hour arXiv CS domain via Open API.
 2.  **Funnel**: Implements a local-to-global filtering strategy to minimize LLM costs while maximizing recall.
