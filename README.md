@@ -39,3 +39,14 @@ Stop drowning in hundreds of new papers every day. Let AI find the "Core Reading
 git clone [https://github.com/YourUsername/Arxiv-Daily-Insight.git](https://github.com/YourUsername/Arxiv-Daily-Insight.git)
 cd Arxiv-Daily-Insight
 pip install -r requirements.txt
+
+## 🖥️ Server Deployment (Automation)
+
+To ensure you receive paper updates every day without maintaining an active SSH session, it is recommended to deploy the pipeline as a **Cron Job** on your Linux server.
+
+### 1. Identify Your Python Path
+Since most researchers use Conda or virtual environments, you must use the **absolute path** of your Python interpreter. Find it by running:
+```bash
+# Activate your environment first
+conda activate your_env_name
+which python
