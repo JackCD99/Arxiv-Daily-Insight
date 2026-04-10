@@ -1,8 +1,5 @@
 # Arxiv-Daily-Insight 🚀
 
-
-# Arxiv-Daily-Insight 🚀
-
 > **📢 [Latest Release v2.0.0] The Intelligent Funnel Update!**
 > We've completely overhauled the architecture to a Multi-Stage Filtering Funnel, saving LLM costs and eliminating hallucinations. 
 > 👉 **[Read the full v2.0.0 Changelog here](./CHANGELOG.md)**
