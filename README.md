@@ -1,5 +1,16 @@
 # Arxiv-Daily-Insight 🚀
 
+
+# Arxiv-Daily-Insight 🚀
+
+> **📢 [Latest Release v2.0.0] The Intelligent Funnel Update!**
+> We've completely overhauled the architecture to a Multi-Stage Filtering Funnel, saving LLM costs and eliminating hallucinations. 
+> 👉 **[Read the full v2.0.0 Changelog here](./CHANGELOG.md)**
+
+Arxiv-Daily-Insight is a professional automated pipeline...
+
+
+
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![OpenAI Compatible](https://img.shields.io/badge/LLM-OpenAI--Compatible-orange.svg)](https://platform.openai.com/)
