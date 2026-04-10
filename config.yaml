@@ -1,0 +1,179 @@
+# =====================================================================
+#                      Global Configuration (config.yaml)
+# =====================================================================
+
+# [1. Authentication & Push Notification Configuration]
+auth:
+  llm_api_key: "YOUR_LLM_API_KEY_HERE" # Replace with your OpenAI/DeepSeek API key
+  pushplus_token: "YOUR_PUSHPLUS_TOKEN_HERE" # Replace with your PushPlus token
+
+
+
+# [2. Proxy Configuration] (Leave as empty string "" if no proxy is needed)
+proxy:
+  http: ""  # e.g., "http://127.0.0.1:7890"
+  https: "" # e.g., "http://127.0.0.1:7890"
+
+
+
+# [3. arXiv Crawler Hyperparameters]
+arxiv:
+  query: 'abs:"diffusion" OR abs:"synthesis" OR abs:"adversarial"' # Logical search query for arXiv API
+  must_have_keywords: # Local keyword filter applied to the title and summary
+    - "diffusion"
+    - "synthesis"
+    - "adversarial"
+  hard_limit: 100       # Maximum number of papers to fetch and process locally (prevents API token bloat) (default:30)
+  max_retries: 10     # Maximum network connection retries per pagination fetch
+  timeout: 15         # Connection timeout in seconds
+  retry_delay: 3      # Wait time in seconds between retries
+
+
+
+
+# [4. Intelligent Filtering Hyperparameters]
+filter:
+  pre_filter_k: 20    # Number of candidates to retain after title-based pre-filtering
+  top_k_papers: 5     # Final number of papers in the daily report
+
+
+
+
+# [5. LLM Configuration & Hyperparameters]
+llm:
+  base_url: "https://api.deepseek.com/chat/completions" # Base endpoint for the OpenAI-compatible API (e.g., https://api.openai.com/v1/chat/completions)
+  model_reasoning: "deepseek-reasoner" # Advanced model for in-depth analysis (e.g., o1-preview, gpt-4o, deepseek-reasoner)
+  model_chat: "deepseek-chat"          # Fast, cost-effective model for initial scoring (e.g., gpt-4o-mini, deepseek-chat)
+  temp_reasoning: 0.1                  # Temperature for the reasoning model (low for structural consistency)
+  temp_chat: 0.5                       # Temperature for the chat model
+
+
+
+
+# [6. Core Scoring & Tagging Criteria]
+criteria:
+  # CURRENT_FOCUS: Describe your ongoing research or the specific problem you're solving.
+  # If empty, the LLM will fall back to general academic criteria.
+  # If provided, the LLM will prioritize papers that align with this context.
+  current_focus: ""
+  research_keywords: |
+    核心关注领域 (不属于这一领域的果断抛弃！)：扩散模型(第一审查标准)，图像合成(第二审查标准)，对抗性攻击(第三审查标准)，医学影像分割，用合成数据做下游任务性能优化
+    理论方向 (辅助参考)：记忆与泛化，可控生成，条件引导，对抗性，噪声优化，初始噪声，CFG，合成数据统计特性，下游效益，SAM,数据增强，表示学习
+    
+  negative_prompt: |
+    如果论文为:【自然语言处理(NIP),遥感(Remote Sensing)、物理、天文、金融、信号处理、大语言模型(LLM)、多模态太语言模型(VLM)、音频、高斯溅射、加密/解密、自动驾驶、3D点云、视频序列，人体姿态，人脸】
+    【】中的这些非[医学]或[自然图像]领域而的设计，请无视所有其他条件，直接打 0 分！
+
+
+
+
+# =====================================================================
+# [7. LLM Prompt Engineering Section]
+# =====================================================================
+# Rationale: This project utilizes a "Multi-Stage Filtering Funnel" strategy.
+# Prompts are optimized for DeepSeek-Reasoner (R1) and DeepSeek-Chat (V3).
+# Variables in {BRACES} are dynamically injected at runtime.
+# =====================================================================
+
+prompts:
+  # ---------------------------------------------------------------------
+  # 1. Level-2 Pre-Filter Prompt (Title-Based Screening)
+  # ---------------------------------------------------------------------
+  # Purpose: High-throughput, low-latency screening to discard obvious noise.
+  # Design: Focuses on lexical relevance to "Core Research Interests."
+  # Efficiency: Requests a JSON array of indices to minimize output tokens.
+  # Recommended Model: deepseek-chat (Fast & Cost-Effective)
+  # ---------------------------------------------------------------------
+  pre_filter_prompt: |
+    You are a professional academic reviewer. Based on the [Core Research Interests], 
+    select the most relevant {PRE_FILTER_K} papers from the following list of titles.
+    
+    [Core Research Interests]:
+    {RESEARCH_KEYWORDS}
+    
+    [Title List]:
+    {TITLE_LIST}
+    
+    [Output Requirement]:
+    Return ONLY a JSON array of the indices (e.g., [0, 2, 5]). No conversational text.
+
+  # ---------------------------------------------------------------------
+  # 2. Level-3 Deep Evaluation Prompt (Abstract-Based Scoring)
+  # ---------------------------------------------------------------------
+  # Purpose: Precision scoring and alignment with user-specific research goals.
+  # Key Feature: Injects {CURRENT_FOCUS} as a high-priority override for 
+  #              uncovering "hidden gems" directly useful for ongoing experiments.
+  # Guardrails: Includes a Negative Prompt mechanism to eliminate cross-domain hallucination.
+  # Recommended Model: deepseek-reasoner (Deep Logic & Reasoning)
+  # ---------------------------------------------------------------------
+  evaluate_prompt: |
+    你是一个极其严苛的学术助手。请根据【研究标准】、【当前研究契合度】和【打分规则】，评估这篇论文的相关性。
+
+    【研究标准】: 
+    {RESEARCH_KEYWORDS}
+
+    【当前研究契合度比对 (最高优先级)】:
+    我目前的研究重点是：{CURRENT_FOCUS}
+    ⚠️ 如果该论文提出的方法、解决的问题与上述内容高度契合，或者其方法论有望迁移至我的研究中，请无视通用标准，直接打 5 分(注意，不要滥用，严格审查)。如果研究重点为空，请忽略。
+
+    【⚠️ 一票否决红线 (Negative Prompt)】:
+    {NEGATIVE_PROMPT}
+
+    【论文信息】
+    标题: {TITLE}
+    摘要: {SUMMARY}
+
+    【打分规则 (0-5分制)】
+    0. 触碰红线：直接符合【一票否决红线】描述，打 0 分。
+    1. 边缘提及 (1分)：未触线，但关联度极低。
+    2. 弱相关 (2分)：未触线，命中少量辅助理论方向。
+    3. 一般 (3分)：未触线，中度匹配核心关注领域。
+    4. 强相关 (4分)：未触线，核心关注领域权重极高。
+    5. 核心/契合 (5分)：未触线，且与【当前研究契合度】高度匹配，或双重精准命中核心领域与理论方向：注意5需要谨慎给出。
+
+    【输出要求】
+    只输出合法的 JSON 对象，不要任何其他文字。
+    {{
+        "relevance": 数字 (0-5)
+    }}
+
+  # ---------------------------------------------------------------------
+  # 3. Final Beautification & Synthesis Prompt (Markdown Brief)
+  # ---------------------------------------------------------------------
+  # Purpose: Transform structured JSON data into a human-readable, professional report.
+  # Design: 
+  #   - Implements Semantic Emoji Mapping for quick visual scanning.
+  #   - Uses specific HTML/CSS tags to ensure rendering compatibility on mobile clients (WeChat/PushPlus).
+  #   - Enforces a 4-point "Deep Dive" structure for concise knowledge extraction.
+  # Recommended Model: deepseek-chat (Instruction Following & Creativity)
+  # ---------------------------------------------------------------------
+  beautify_prompt: |
+    你是一位顶级的 AI 学术研究员。我将提供 {TOP_K} 篇经过初步筛选的最新学术论文。
+    请你深度阅读，仔细思考这些论文的信息，进行逻辑梳理，并直接输出一份排版精美的 Markdown 简报。
+
+    【输入数据】
+    {RAW_CONTENT}
+
+    【相关性级别与 Emoji 对应规则】
+    根据输入数据中的 `relevance` 分数，严格使用以下标签（绝对不要在输出中显示具体的数字分数）：
+    - 如果 relevance 为 5：🌟 核心必读
+    - 如果 relevance 为 4：🔥 重点关注
+    - 如果 relevance 为 3：📌 值得参考
+    - 如果 relevance 为 2：📖 辅助拓宽
+    - 如果 relevance 为 1：🔍 边缘涉猎
+
+    【排版与深度分析要求】
+    1. 简报大标题：🚀 今日精选文献速递 ({TODAY_STR} | Top {TOP_K})
+    2. 按照论文的 relevance 从高到低排列。
+    3. 每篇论文严格按照以下结构排版（HTML 标签用于样式兼容）：
+       ### **[论文标题]**
+       - 🎯 **相关度**: [填入对应的 Emoji 标签]
+       - 👤 **作者**: (直接输出数据里的作者信息)
+       - 🏛️ **发表/备注**: (直接输出数据里的备注信息，若无则不显示这一行)
+       - 🔗 : [https://arxiv.org/abs/...](https://arxiv.org/abs/...)
+       - 💡 **深度剖析**:
+         - <span style="color: #2c3e50;">**研究背景**</span>: ...(提炼研究的学术背景，言简意赅)
+         - <span style="color: #c0392b;">**核心痛点**</span>: ...(明确文章要解决的问题关键点)
+         - <span style="color: #16a085;">**创新方法**</span>: ...(具体说明提出了何种技术方案)
+         - <span style="color: #8e44ad;">**结论与影响**</span>: ...(总结文章的实验结果与对该领域的贡献)
+    4. 整体风格专业整洁。绝对不要输出 ```markdown 标记，直接输出纯 Markdown 内容！必须保留上述 HTML span 颜色标签以优化移动端显示。
