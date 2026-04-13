@@ -15,7 +15,6 @@ proxy:
   https: "" # e.g., "http://127.0.0.1:7890"
 
 
-
 # [3. arXiv Crawler Hyperparameters]
 arxiv:
   query: 'abs:"diffusion" OR abs:"synthesis" OR abs:"adversarial" OR abs:"medical"' # Logical search query for arXiv API
@@ -53,11 +52,11 @@ llm:
 # Rationale: These formalized variables are injected into the prompts below.
 criteria:
   # CURRENT_FOCUS: The absolute highest priority context.
-  current_focus: "Application of Diffusion Models for image segmentation data synthesis and augmentation to enhance downstream classification/segmentation utility. Core interests include: diffusion-driven adversarial attacks and sample synthesis, analysis of latent input noise spaces, memory vs. generalization effects, long-tailed/class-imbalanced generation, and training-free or plug-and-play strategies to improve synthesis diversity and fidelity."
+  current_focus: "Application of Diffusion Models for data (only nature image or medical segmentation data) synthesis, augmentation for downstream classification/segmentation utility, and controllable generation. Core interests include: diffusion-driven adversarial attacks, analysis of diffusion input noise, memory vs. generalization of Diffusion Model, long-tailed/class-imbalanced generation, and training-free or plug-and-play strategies to improve synthesis diversity and fidelity."
   
   # RESEARCH_KEYWORDS: The domain and methodology matrix.
   research_keywords:
-    core_domains: ["Diffusion Models", "Image Synthesis", "Adversarial Attacks", "Medical Imaging", "Downstream Optimization via Synthetic Data"]
+    core_domains: ["Diffusion Models", "Image Synthesis", "Adversarial Attacks", "Medical Imaging Segmentation", "Downstream Optimization via Synthetic Data"]
     methodologies: ["Memory & Generalization", "Controllable Generation", "Conditional Guidance", "Noise Optimization", "Initial Noise Latent", "CFG", "Synthetic Data Statistics", "Downstream Benefit Analysis", "Data Augmentation", "Representation Learning"]
     
   # NEGATIVE_PROMPT: Domains strictly outside the scope of this research.
@@ -157,11 +156,11 @@ prompts:
     ## STEP 2: METRIC SCORING (Discrete Quantitative Assessment)
     Assign independent scores focusing heavily on Alignment and Transferability:
     1. Alignment_Score (A) [PRIMARY]: 
-       - 3: Directly aligned with RESEARCH_FOCUS (Core interest).
-       - 2: High potential for transfer or strong methodological inspiration.
-       - 1: Low Potential for transfer or Weak methodological inspiration.
+       - 3: CORE ALIGNMENT & INNOVATION Must directly target `CURRENT_FOCUS` with a major methodological or theoretical breakthrough. Generic "using diffusion" or incremental tweaks DO NOT qualify.
+       - 2: ELITE TRANSFER  High potential for transfer or strong methodological inspiration.
+       - 1: MARGINAL RELEVANCE Low Potential for transfer or Weak methodological inspiration.
        - 0: Neutral or general interest.
-       - -1: Fundamental mismatch in research goals.
+       - -1:  (Noise) Fundamental mismatch in research goals.
     2. Domain_Score (D): 
        - 2: Core Domain.
        - 1: Related Sub-domain or interesting Cross-domain application.
@@ -186,7 +185,7 @@ prompts:
 
     ## STEP 4: BONUS SCORING (Strictly for Tie-Breaking)
     Calculate a `Bonus_Score` (Float):
-    1. Venue Bonus: IF REMARKS explicitly state "Accepted by" a venue in TOP_VENUES_WEIGHTS, add its specific weight. Else add 0.
+    1. Venue Bonus: If venue is IN `TOP_VENUES_WEIGHTS` -> Add its exact weight to `Bonus_Score`. If accepted by a venue explicitly NOT IN `TOP_VENUES_WEIGHTS` -> Subtract 1 from `Bonus_Score`. If no acceptance is mentioned -> Add 0 (No adjustments).
     2. Oral/Highlight Bonus: IF REMARKS mention "Oral", "Highlight", or "Spotlight", add 0.5.
     3. Author Bonus: IF ANY name in AUTHORS is in TRACKED_AUTHORS, add 1.5.
 
