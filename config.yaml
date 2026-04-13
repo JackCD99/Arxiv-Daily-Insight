@@ -53,7 +53,7 @@ llm:
 # Rationale: These formalized variables are injected into the prompts below.
 criteria:
   # CURRENT_FOCUS: The absolute highest priority context.
-  current_focus: "Application of Diffusion Models for medical image segmentation data synthesis and data augmentation to enhance downstream classification/segmentation utility. Core interests include: diffusion-driven adversarial attacks and sample synthesis, analysis of latent input noise spaces, memory vs. generalization effects, long-tailed/class-imbalanced generation, and training-free or plug-and-play strategies to improve synthesis diversity and fidelity."
+  current_focus: "Application of Diffusion Models for image segmentation data synthesis and augmentation to enhance downstream classification/segmentation utility. Core interests include: diffusion-driven adversarial attacks and sample synthesis, analysis of latent input noise spaces, memory vs. generalization effects, long-tailed/class-imbalanced generation, and training-free or plug-and-play strategies to improve synthesis diversity and fidelity."
   
   # RESEARCH_KEYWORDS: The domain and methodology matrix.
   research_keywords:
@@ -77,7 +77,7 @@ criteria:
   top_venues: 
     CVPR: 1.2
     TMI: 0.8
-    TPAMI: 1.2
+    TPAMI: 1.5
     ICLR: 1.2
     ICCV: 1.0
     ECCV: 0.8
@@ -88,7 +88,7 @@ criteria:
     MedIA: 0.8
     Science: 2.0
     Nature: 2.0
-    AAAI: 1.0
+    AAAI: 0.8
     IJCV: 0.8
     ACL: 0.5
 
@@ -179,7 +179,7 @@ prompts:
     - SYNERGY & REFINEMENT RULES:
         1. THE CROWN RULE: IF (A == 3 AND D == 2 AND M == 1), force Total_Score = 5. (Only for "Perfect Match" - Core domain + Core focus + Target method)
         2. THE INSPIRATION CAP: IF (A == 2 AND D == 1), the Score should typically stay at 3 or 4. (Prevents cross-domain papers from diluting the 5-star pool unless they are extraordinary)
-        3. WEAK MATCH PENALTY: IF (A <= 1 AND D <= 1), force Total_Score <= 3. (Filters out generic related work)
+        3. WEAK MATCH PENALTY: IF (A <= 1 AND D <= 1), force Total_Score < 3. (Filters out generic related work)
 
     - CONSTRAINTS: Clamp Total_Score between [0, 5]. 
       (Note: A Score of 5 should be EXTREMELY RARE, reserved only for papers that hit all three core research pillars.)
