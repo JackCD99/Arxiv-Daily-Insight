@@ -152,22 +152,27 @@ def run_with_smart_retries():
     # Extract the captured log string
     final_log_str = log_buffer.getvalue()
 
-    # Ensure the Logs directory exists
-    log_dir = "Logs"
+    # Ensure the Logs directory 
+    # Use absolute path derivation for robustness (matching main.py logic)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = os.path.join(base_dir, "Logs")
     os.makedirs(log_dir, exist_ok=True)
     
-    # Dynamically name the log file based on final execution status
-    time_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_filename = os.path.join(log_dir, f"[{final_status}]_{time_str}.txt")
+    # --- MODIFIED LOG FILENAME ---
+    # We add '_RunDetail' to distinguish this full console log from the scoring ledgers
+    time_str = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+    log_filename = os.path.join(log_dir, f"[{final_status}]_RunDetail_{time_str}.txt")
 
     with open(log_filename, "w", encoding="utf-8") as f:
         f.write(final_log_str)
 
-    print(f"\nExecution finished. Logs persisted to: {log_filename}")
+    print(f"\nExecution finished. Console logs persisted to: {log_filename}")
 
     # Trigger notification if the pipeline ultimately failed
     if final_status == "Fail":
         send_failure_alert(final_log_str)
+        # Note: If main.py already sent a PushPlus notification for specific errors,
+        # this alert acts as a secondary failsafe for script-level crashes.
         print("Failure alert dispatch process completed.")
 
 if __name__ == "__main__":
