@@ -18,19 +18,27 @@ proxy:
 
 # [3. arXiv Crawler Hyperparameters]
 arxiv:
-  query: 'abs:"diffusion" OR abs:"synthesis" OR abs:"adversarial"' # Logical search query for arXiv API
+  query: 'abs:"diffusion" OR abs:"synthesis" OR abs:"adversarial" OR abs:"medical"' # Logical search query for arXiv API
   must_have_keywords: # Local hard-filter applied to the title and summary
     - "diffusion"
     - "synthesis"
     - "adversarial"
-  hard_limit: 100       # Maximum raw papers to fetch before local processing (prevents API bloat)
+    - "medical"
+  # 新增：允许保留的 cs 细分领域。除了这些，其他带有明确 cs.XX 后缀的将被干掉。
+  allowed_cs_subcategories: 
+    - "cs.AI"
+    - "cs.CV"
+    - "cs.LG"
+    - "cs.NE"
+    - "cs.GR" # 计算机图形学
+  hard_limit: 150       # Maximum raw papers to fetch before local processing (prevents API bloat)
   max_retries: 10     # Maximum network connection retries per pagination fetch
   timeout: 15         # Connection timeout in seconds
   retry_delay: 3      # Wait time in seconds between retries
 
 # [4. Intelligent Filtering Hyperparameters]
 filter:
-  pre_filter_k: 25    # Number of candidates to retain after Level 2 (title-based) pre-filtering
+  #pre_filter_k: 25    # Number of candidates to retain after Level 2 (title-based) pre-filtering
   top_k_papers: 5     # Final number of papers to include in the WeChat Markdown report
 
 # [5. LLM Configuration & Hyperparameters]
@@ -53,10 +61,36 @@ criteria:
     methodologies: ["Memory & Generalization", "Controllable Generation", "Conditional Guidance", "Noise Optimization", "Initial Noise Latent", "CFG", "Synthetic Data Statistics", "Downstream Benefit Analysis", "Data Augmentation", "Representation Learning"]
     
   # NEGATIVE_PROMPT: Domains strictly outside the scope of this research.
-  negative_prompt: ["Pure NLP", "Video" , "Remote Sensing", "Astronomy", "Finance", "Signal Processing", "Audio", "Embodied Intelligence", "Gaussian Splatting", "Encryption/Decryption", "Autonomous Driving", "3D Point Cloud", "Video Sequences", "Human Pose", "Facial Analysis"]
+  negative_prompt: ["Pure NLP", "Video" , "Remote Sensing", "Astronomy", "Finance", "Signal Processing", "Audio", "Embodied Intelligence", "Gaussian Splatting", "Encryption/Decryption", "Autonomous Driving", "Point Cloud", "Video Sequences", "Human Pose", "Facial Analysis","Graph Data/Network","Depth Estimation"]
 
-
-  top_venues: ["CVPR", "TMI", "TPAMI", "ICLR", "ICCV", "ECCV", "NeurIPS", "NIPS", "ICML", "TIP", "MICCAI", "MedIA", "Nature", "AAAI"]
+  tracked_authors: [
+    "Kaiming He", 
+    "Yang Song", 
+    "Saining Xie", 
+    "Yanghao Wang", 
+    "Luca Eyring", 
+    "Yiming Qin", 
+    "Xinquan Chen", 
+    "Kunpeng Qiu"
+  ]
+  
+  top_venues: 
+    CVPR: 1.2
+    TMI: 0.8
+    TPAMI: 1.2
+    ICLR: 1.2
+    ICCV: 1.0
+    ECCV: 0.8
+    NeurIPS: 1.5
+    ICML: 1.2
+    TIP: 0.8
+    MICCAI: 0.8
+    MedIA: 0.8
+    Science: 2.0
+    Nature: 2.0
+    AAAI: 1.0
+    IJCV: 0.8
+    ACL: 0.5
 
 # =====================================================================
 # [7. LLM Prompt Engineering Section]
@@ -72,28 +106,27 @@ prompts:
   # 1. Level-2 Pre-Filter Prompt (Title-Based Screening)
   # ---------------------------------------------------------------------
   pre_filter_prompt: |
-    You are an expert academic curator specializing in Computer Vision. Your task is to perform a high-speed semantic screening of paper titles.
+    You are a conservative noise-reduction gateway, NOT a strict academic reviewer. Your ONLY job is to identify and remove OBVIOUS NOISE from a list of paper titles.
 
-    # [PART 1: SCREENING CRITERIA & CONTEXT]
-    - RESEARCH_FOCUS (Highest Priority): {CURRENT_FOCUS}
-    - TARGET_DOMAINS: {RESEARCH_KEYWORDS_CORE}
-    - TARGET_METHODS: {RESEARCH_KEYWORDS_METHOD}
+    # [PART 1: SCREENING CRITERIA]
+    - CORE_DOMAINS: {RESEARCH_KEYWORDS_CORE}
+    - RESEARCH_FOCUS: {CURRENT_FOCUS}
     - EXCLUSION_LIST: {NEGATIVE_PROMPT}
 
-    # [PART 2: SELECTION LOGIC]
-    1. EXCLUDE: Titles strictly dedicated to EXCLUSION_LIST domains.
-       *EXCEPTION*: Do NOT exclude if the title suggests the use of models (like LLMs/VLMs) merely as *tools* for Medical/Natural Image tasks.
-    2. PRIORITIZE: Titles that strongly align with the RESEARCH_FOCUS. If FOCUS is empty, fallback to prioritizing titles explicitly mentioning TARGET_DOMAINS or TARGET_METHODS.
-    3. SELECTION: Identify the top {PRE_FILTER_K} most promising papers. 
-    
-    # [GROUNDING RULE]: Base your selection strictly on the lexical semantic meaning of the provided titles. Do not hallucinate paper contents.
+    # [PART 2: ELIMINATION LOGIC (ABSOLUTE THRESHOLD)]
+    CRITICAL INSTRUCTION: You are NOT picking the "best" papers. You are NOT grading on a curve. There is NO discard quota. If every single paper in the list is potentially relevant, it is a perfect outcome to keep 100% of them. 
+
+    Apply this binary logic strictly to each title:
+    1. DISCARD ONLY IF: The title CLEARLY and UNAMBIGUOUSLY falls into the EXCLUSION_LIST (e.g., pure NLP, astronomy, hardware) or has zero conceptual overlap with the CORE_DOMAINS.
+    2. DEFAULT TO KEEP: If the title aligns with the focus, touches on the CORE_DOMAINS, OR if it is ambiguous and you cannot be 100% certain it is noise just from the title, YOU MUST KEEP IT. When in doubt, default to KEEP.
 
     # [PART 3: CANDIDATE TITLES]
     {TITLE_LIST}
 
     # [PART 4: OUTPUT SPECIFICATION]
-    Return ONLY a raw JSON array of the indices of the selected papers. 
-    Example Output: [0, 3, 12, 15]
+    Return ONLY a raw JSON array of the INDICES of the papers you decide to KEEP. 
+    Example Output (if some are noise): [0, 1, 3, 4, 7, 12, 15]
+    Example Output (if NONE are noise): [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     Do not include markdown code blocks, indices labels, or explanations.
 
   # ---------------------------------------------------------------------
@@ -103,55 +136,77 @@ prompts:
     You are a rigorous academic reviewer. Perform a multi-dimensional quantitative evaluation of the provided paper based on the following [Formalized Criteria].
 
     # [ANTI-HALLUCINATION PROTOCOL]
-    Base your evaluation STRICTLY on the provided TITLE, SUMMARY, and REMARKS. Do not assume or hallucinate datasets, metrics, or methodologies.
+    Base your evaluation STRICTLY on the provided TITLE, SUMMARY, AUTHORS, and REMARKS. Do not assume or hallucinate datasets, metrics, or methodologies.
 
     # [PART 1: VARIABLE DEFINITIONS]
     - CORE_DOMAINS: {RESEARCH_KEYWORDS_CORE}
     - METHODOLOGIES: {RESEARCH_KEYWORDS_METHOD}
     - RESEARCH_FOCUS: {CURRENT_FOCUS}
     - EXCLUSION_LIST: {NEGATIVE_PROMPT}
-    - TOP_VENUES: {TOP_VENUES}
+    - TOP_VENUES_WEIGHTS: {TOP_VENUES}
+    - TRACKED_AUTHORS: {TRACKED_AUTHORS}
 
     # [PART 2: EVALUATION LOGIC OPERATORS]
 
-    ## STEP 1: BOUNDARY CHECK (Tool vs. Domain Exception)
+    ## STEP 1: BOUNDARY CHECK
     IF (The paper's PRIMARY application is within EXCLUSION_LIST):
-       SET RELEVANCE = 0, TERMINATE AND OUTPUT JSON
-    ELSE IF (The paper merely USES tools like LLMs/VLMs to solve Medical or Natural Image tasks):
-       PROCEED TO STEP 2
+        SET Total_Score = 0, Bonus_Score = 0, TERMINATE AND OUTPUT JSON.
     ELSE:
-       PROCEED TO STEP 2
+        PROCEED TO STEP 2.
 
-    ## STEP 2: METRIC SCORING (Quantitative Assessment)
-    Assign independent scores for the following dimensions:
-    1. Domain_Score (D): 2 (Core), 1 (Related), 0 (Irrelevant).
-    2. Method_Score (M): 1 (Uses TARGET_METHODS), 0 (Obsolete/Generic).
-    3. Alignment_Score (A): 2 (Core alignment), 1 (Potential transfer), 0 (None/Empty), -1 (Mismatch).
+    ## STEP 2: METRIC SCORING (Discrete Quantitative Assessment)
+    Assign independent scores focusing heavily on Alignment and Transferability:
+    1. Alignment_Score (A) [PRIMARY]: 
+       - 3: Directly aligned with RESEARCH_FOCUS (Core interest).
+       - 2: High potential for transfer or strong methodological inspiration.
+       - 1: Low Potential for transfer or Weak methodological inspiration.
+       - 0: Neutral or general interest.
+       - -1: Fundamental mismatch in research goals.
+    2. Domain_Score (D): 
+       - 2: Core Domain.
+       - 1: Related Sub-domain or interesting Cross-domain application.
+       - 0: Irrelevant.
+    3. Method_Score (M): 
+       - 1: Research or improvement TARGET_METHODS.
+       - 0: Obsolete, generic, or non-target methods.
 
-    ## STEP 3: VENUE BONUS (Quality Boost)
-    IF (REMARKS state acceptance by TOP_VENUES): SET Venue_Bonus = 1 ELSE: SET Venue_Bonus = 0
+    ## STEP 3: LOGICAL GATES & FINAL RELEVANCE
+    - VETO RULE: IF (D == 0) OR (A == -1), SET Total_Score = 0. STOP.
+    
+    - CALCULATION (Incremental Sum): 
+        Total_Score = A + D + M
+        
+    - SYNERGY & REFINEMENT RULES:
+        1. THE CROWN RULE: IF (A == 3 AND D == 2 AND M == 1), force Total_Score = 5. (Only for "Perfect Match" - Core domain + Core focus + Target method)
+        2. THE INSPIRATION CAP: IF (A == 2 AND D == 1), the Score should typically stay at 3 or 4. (Prevents cross-domain papers from diluting the 5-star pool unless they are extraordinary)
+        3. WEAK MATCH PENALTY: IF (A <= 1 AND D <= 1), force Total_Score <= 3. (Filters out generic related work)
 
-    ## STEP 4: SYNTHESIS (Final Score Calculation)
-    - FORMULA: Total_Score = D + M + A + Venue_Bonus
-    - SPECIAL_RULE: IF (A == 2 AND D >= 1) THEN Total_Score = 5 (Priority Pass).
-    - CONSTRAINTS: Clamp the final score. MAX_SCORE = 5. MIN_SCORE = 0.
+    - CONSTRAINTS: Clamp Total_Score between [0, 5]. 
+      (Note: A Score of 5 should be EXTREMELY RARE, reserved only for papers that hit all three core research pillars.)
 
-    ## STEP 5: TIE-BREAKER (Novelty/Impact)
-    Assign a Novelty_Score (1-10) evaluating the theoretical innovation or practical impact of the paper. This will STRICTLY be used to break ties if multiple papers have the same Total_Score.
+    ## STEP 4: BONUS SCORING (Strictly for Tie-Breaking)
+    Calculate a `Bonus_Score` (Float):
+    1. Venue Bonus: IF REMARKS explicitly state "Accepted by" a venue in TOP_VENUES_WEIGHTS, add its specific weight. Else add 0.
+    2. Oral/Highlight Bonus: IF REMARKS mention "Oral", "Highlight", or "Spotlight", add 0.5.
+    3. Author Bonus: IF ANY name in AUTHORS is in TRACKED_AUTHORS, add 1.5.
 
     # [PART 3: PAPER METADATA]
     - TITLE: {TITLE}
+    - AUTHORS: {AUTHORS}
     - SUMMARY: {SUMMARY}
     - REMARKS: {REMARKS}
 
     # [PART 4: OUTPUT SPECIFICATION]
-    Return ONLY a valid JSON object. Do not include conversational text or markdown code blocks.
+    Return ONLY a valid JSON object.
     {{
-        "thought_trace": "D:{D_score}, M:{M_score}, A:{A_score}, Bonus:{Venue_Bonus}. [Brief rationale: Translate into Chinese]",
+        "thought_trace": "A:{A_score}, D:{D_score}, M:{M_score}. Bonus: Venue({V_weight}) + Oral({O_bonus}) + Author({A_bonus}). [简明扼要的打分理由，即 A,D,M 的依据 (中文)]",
         "relevance": [Total_Score],
-        "novelty": [Novelty_Score]
+        "bonus_score": [Bonus_Score]
     }}
 
+  # ---------------------------------------------------------------------
+  # 3. Final Beautification & Synthesis Prompt (Markdown Brief)
+  # ---------------------------------------------------------------------
   # ---------------------------------------------------------------------
   # 3. Final Beautification & Synthesis Prompt (Markdown Brief)
   # ---------------------------------------------------------------------
@@ -172,25 +227,29 @@ prompts:
 
     [EMOJI MAPPING RULES]
     Map the `relevance` score to the exact following labels (Do NOT output the raw numbers):
-    - Score 5: 🌟🌟🌟🌟🌟 (核心必读！)
+    - Score 5: 🌟🌟🌟🌟🌟 (核心必读！！！)
     - Score 4: 🌟🌟🌟🌟 (重点关注！)
-    - Score 3: 🌟🌟🌟 (值得参考~)
-    - Score 2: 🌟🌟 (看看就行)
-    - Score 1: 🌟 (今天相关文献太少了？)
+    - Score 3: 🌟🌟🌟 (值得借鉴~)
+    - Score 2: 🌟🌟 (看看就行...)
+    - Score 1: 🌟 (这也能被端上来？)
 
     [FORMATTING REQUIREMENTS]
     1. Main Header: 🚀 今日精选文献速递 ({TODAY_STR} | Top {TOP_K})
     2. Sort the papers in descending order based on their relevance score.
-    3. Each paper MUST strictly follow this layout (HTML tags must be preserved):
+    3. IMPORTANT BOLDING: Within the "深度剖析" section, you MUST strategically **bold** key technical terms, novel method names, specific datasets, and critical performance metrics to create a scannable and premium reading experience (Do not abuse).
+    4. Each paper MUST strictly follow this layout (HTML tags must be preserved perfectly):
        ### **[Paper Title in Original English]**
+       - 🔗 [https://arxiv.org/abs/...](https://arxiv.org/abs/...)
        - 🎯 **相关度**: [Insert Mapped Emoji Label]
        - 👤 **作者**: (Extract from data)
        - 🏛️ **发表/备注**: (Extract from data, omit line if empty)
-       - 🔗 [https://arxiv.org/abs/...](https://arxiv.org/abs/...)
-       - 💡 **深度剖析**: (Extract and synthesize based strictly on the abstract)
-         - <span style="color: #2c3e50;">**研究背景**</span>: ...(Concise academic background)
-         - <span style="color: #c0392b;">**核心痛点**</span>: ...(What specific problem is being solved?)
-         - <span style="color: #16a085;">**创新方法**</span>: ...(What is the proposed technical solution?)
-         - <span style="color: #8e44ad;">**结论与影响**</span>: ...(Reported experimental results and domain impact)
-         
-    4. Provide PURE Markdown text only. Do NOT wrap the output in ```markdown blocks. Preserve all HTML <span> color tags for mobile optimization.
+
+       <div markdown="1" style="background-color: #f1f5f9; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #3498db; margin-top: 12px; font-size: 0.95em;">
+       💡 **深度剖析**:
+       - <span style="color: #2c3e50;">**研究背景**</span>: ...(Concise academic background. **Bold** core concepts)
+       - <span style="color: #c0392b;">**核心痛点**</span>: ...(What specific problem is being solved? **Bold** key limitations)
+       - <span style="color: #16a085;">**创新方法**</span>: ...(What is the proposed technical solution? **Bold** model/module names)
+       - <span style="color: #8e44ad;">**结论与影响**</span>: ...(Reported experimental results. **Bold** datasets/metrics)
+       </div>
+
+    5. Provide PURE Markdown text only. Do NOT wrap the output in ```markdown blocks. Preserve all HTML tags for mobile optimization.
